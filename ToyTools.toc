@@ -1,0 +1,26 @@
+## Interface: 11107
+## Title: ToyTools
+## Notes: 玩具工具插件 - 自动填充删除确认、自动最小化目标追踪栏
+## Author: Assistant
+## Version: 1.0
+## SavedVariables: ToyToolsDB
+
+# Ace3库文件
+Ace3-r1364-alpha\Ace3\LibStub\LibStub.lua
+Ace3-r1364-alpha\Ace3\CallbackHandler-1.0\CallbackHandler-1.0.xml
+Ace3-r1364-alpha\Ace3\AceAddon-3.0\AceAddon-3.0.xml
+Ace3-r1364-alpha\Ace3\AceEvent-3.0\AceEvent-3.0.xml
+Ace3-r1364-alpha\Ace3\AceConsole-3.0\AceConsole-3.0.xml
+Ace3-r1364-alpha\Ace3\AceConfig-3.0\AceConfig-3.0.xml
+Ace3-r1364-alpha\Ace3\AceConfigDialog-3.0\AceConfigDialog-3.0.xml
+Ace3-r1364-alpha\Ace3\AceDB-3.0\AceDB-3.0.xml
+Ace3-r1364-alpha\Ace3\AceDBOptions-3.0\AceDBOptions-3.0.xml
+
+# 主文件
+ToyTools.lua
+
+# 测试脚本
+test_plugin.lua
+
+# 诊断脚本
+diagnose.lua 
