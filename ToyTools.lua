@@ -15,6 +15,11 @@ local defaults = {
         autoDelete = true,
         minimizeTracking = true,
         debugMode = false,
+        -- 自动售卖相关默认值
+        autoSellEnable = false,
+        autoSellIlvlMin = 0,
+        autoSellIlvlMax = 999,
+        autoSellLegendary = false,
     }
 }
 
@@ -39,6 +44,7 @@ function ToyTools:OnInitialize()
     self:RegisterChatCommand("toytoolstest", "RunTest")
     self:RegisterChatCommand("toytoolsmin", "MinimizeTrackingBar")
     self:RegisterChatCommand("toytoolsdebug", "ToggleDebug")
+    self:RegisterChatCommand("tttest", "PrintAutoSellItemCount")
     
     if self.db.profile.debugMode then
         print("|cFF00FF00[ToyTools]|r 聊天命令注册完成")
@@ -48,6 +54,9 @@ function ToyTools:OnInitialize()
     self:RegisterEvent("PLAYER_LOGIN")
     self:RegisterEvent("PLAYER_ENTERING_WORLD")
     self:RegisterEvent("ADDON_LOADED")
+    self:RegisterEvent("MERCHANT_SHOW")
+    self:RegisterEvent("BAG_OPEN")
+    -- 在OnInitialize中移除BAG_UPDATE_DELAYED事件注册
     
     if self.db.profile.debugMode then
         print("|cFF00FF00[ToyTools]|r 事件注册完成")
@@ -65,6 +74,7 @@ function ToyTools:OnInitialize()
     else
         print("|cFF00FF00[ToyTools]|r 插件已加载，使用 /toytools 打开设置")
     end
+    self:StartPeriodicBagCache()
 end
 
 -- 启用自动填充删除确认
@@ -262,30 +272,27 @@ end
 
 -- 运行测试
 function ToyTools:RunTest()
-    if not self.db.profile.debugMode then
-        print("|cFF00FF00[ToyTools]|r 请先开启调试模式查看详细测试信息")
-        return
-    end
-    
+    self._diagnoseMode = true
     print("|cFF00FF00[ToyTools]|r 开始功能测试...")
-    
     if self.db and self.db.profile then
         print("✓ 设置已初始化")
         print("  自动填充删除确认: " .. (self.db.profile.autoDelete and "开启" or "关闭"))
         print("  自动最小化追踪栏: " .. (self.db.profile.minimizeTracking and "开启" or "关闭"))
         print("  调试模式: " .. (self.db.profile.debugMode and "开启" or "关闭"))
+        print("  自动售卖: " .. (self.db.profile.autoSellEnable and "开启" or "关闭"))
+        print("  售卖装等范围: " .. (self.db.profile.autoSellIlvlMin or 0) .. "-" .. (self.db.profile.autoSellIlvlMax or 999))
+        print("  橙装自动售卖: " .. (self.db.profile.autoSellLegendary and "是" or "否"))
     else
         print("✗ 设置未初始化")
     end
-    
     if ObjectiveTrackerFrame then
         print("✓ 目标追踪栏已找到")
         print("  当前状态: " .. (ObjectiveTrackerFrame:IsCollapsed() and "已最小化" or "已展开"))
     else
         print("✗ 目标追踪栏未找到")
     end
-    
     print("|cFF00FF00[ToyTools]|r 测试完成！")
+    self._diagnoseMode = false
 end
 
 -- 切换调试模式
@@ -347,10 +354,70 @@ local function CreateOptions()
         debugModeCheckbox:SetScript("OnClick", function(self)
             ToyTools.db.profile.debugMode = self:GetChecked()
         end)
+
+        -- 自动售卖功能勾选框
+        local autoSellCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+        autoSellCheckbox:SetPoint("TOPLEFT", debugModeCheckbox, "BOTTOMLEFT", 0, -20)
+        autoSellCheckbox.Text:SetText("自动售卖灰色和指定装等装备")
+        autoSellCheckbox.tooltipText = "开启后，打开商人界面自动售卖灰色物品和指定装等范围的装备"
+        autoSellCheckbox:SetChecked(ToyTools.db.profile.autoSellEnable)
+        autoSellCheckbox:SetScript("OnClick", function(self)
+            ToyTools.db.profile.autoSellEnable = self:GetChecked()
+        end)
+
+        -- 装等范围输入框（最低）
+        local ilvlMinEditBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+        ilvlMinEditBox:SetSize(60, 25)
+        ilvlMinEditBox:SetPoint("TOPLEFT", autoSellCheckbox, "BOTTOMLEFT", 0, -10)
+        ilvlMinEditBox:SetAutoFocus(false)
+        ilvlMinEditBox:SetNumeric(true)
+        ilvlMinEditBox:SetNumber(ToyTools.db.profile.autoSellIlvlMin or 0)
+        ilvlMinEditBox:SetScript("OnEnterPressed", function(self)
+            local val = tonumber(self:GetText()) or 0
+            ToyTools.db.profile.autoSellIlvlMin = val
+            self:ClearFocus()
+        end)
+        ilvlMinEditBox:SetScript("OnEditFocusLost", function(self)
+            local val = tonumber(self:GetText()) or 0
+            ToyTools.db.profile.autoSellIlvlMin = val
+        end)
+        local ilvlMinLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        ilvlMinLabel:SetPoint("RIGHT", ilvlMinEditBox, "LEFT", -5, 0)
+        ilvlMinLabel:SetText("最低装等：")
+
+        -- 装等范围输入框（最高）
+        local ilvlMaxEditBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+        ilvlMaxEditBox:SetSize(60, 25)
+        ilvlMaxEditBox:SetPoint("LEFT", ilvlMinEditBox, "RIGHT", 80, 0)
+        ilvlMaxEditBox:SetAutoFocus(false)
+        ilvlMaxEditBox:SetNumeric(true)
+        ilvlMaxEditBox:SetNumber(ToyTools.db.profile.autoSellIlvlMax or 999)
+        ilvlMaxEditBox:SetScript("OnEnterPressed", function(self)
+            local val = tonumber(self:GetText()) or 999
+            ToyTools.db.profile.autoSellIlvlMax = val
+            self:ClearFocus()
+        end)
+        ilvlMaxEditBox:SetScript("OnEditFocusLost", function(self)
+            local val = tonumber(self:GetText()) or 999
+            ToyTools.db.profile.autoSellIlvlMax = val
+        end)
+        local ilvlMaxLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        ilvlMaxLabel:SetPoint("RIGHT", ilvlMaxEditBox, "LEFT", -5, 0)
+        ilvlMaxLabel:SetText("最高装等：")
+
+        -- 橙装自动售卖勾选框
+        local legendaryCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+        legendaryCheckbox:SetPoint("TOPLEFT", ilvlMinEditBox, "BOTTOMLEFT", 0, -10)
+        legendaryCheckbox.Text:SetText("橙装自动售卖")
+        legendaryCheckbox.tooltipText = "选中后，橙色品质装备也会自动售卖"
+        legendaryCheckbox:SetChecked(ToyTools.db.profile.autoSellLegendary)
+        legendaryCheckbox:SetScript("OnClick", function(self)
+            ToyTools.db.profile.autoSellLegendary = self:GetChecked()
+        end)
         
         -- 运行测试按钮
         local testButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        testButton:SetPoint("TOPLEFT", debugModeCheckbox, "BOTTOMLEFT", 0, -20)
+        testButton:SetPoint("TOPLEFT", legendaryCheckbox, "BOTTOMLEFT", 0, -20)
         testButton:SetSize(120, 25)
         testButton:SetText("运行测试")
         testButton:SetScript("OnClick", function()
@@ -393,3 +460,311 @@ end
 
 -- 延迟创建设置界面
 C_Timer.After(2, CreateOptions) 
+
+-- 自动售卖相关优化：基于TinyInspect思路，监听GET_ITEM_INFO_RECEIVED事件，提升物品信息获取效率
+ToyTools.pendingSellItems = {}
+ToyTools._itemInfoEventRegistered = false
+ToyTools._autoSellTimeoutTimer = nil
+
+function ToyTools:StartPeriodicBagCache()
+    if self._periodicBagCacheTimer then
+        self._periodicBagCacheTimer:Cancel()
+    end
+    local function cacheFunc()
+        for bag = 0, 4 do
+            local numSlots = C_Container.GetContainerNumSlots(bag)
+            for slot = 1, numSlots do
+                local itemLink = C_Container.GetContainerItemLink(bag, slot)
+                if type(itemLink) == "string" and string.find(itemLink, "item:") then
+                    GetItemInfo(itemLink)
+                end
+            end
+        end
+        -- 每5秒再次缓存
+        self._periodicBagCacheTimer = C_Timer.NewTimer(5, cacheFunc)
+    end
+    cacheFunc()
+end
+
+function ToyTools:MERCHANT_SHOW(event, ...)
+    self.pendingSellItems = {}
+    self._itemInfoEventRegistered = false
+    if self._autoSellTimeoutTimer then
+        self._autoSellTimeoutTimer:Cancel()
+        self._autoSellTimeoutTimer = nil
+    end
+    self:PreCacheAllBagItems()
+    self:CheckAndSellAll()
+end
+
+-- 主动批量缓存所有背包物品信息
+function ToyTools:PreCacheAllBagItems()
+    for bag = 0, 4 do
+        local numSlots = C_Container.GetContainerNumSlots(bag)
+        for slot = 1, numSlots do
+            local itemLink = C_Container.GetContainerItemLink(bag, slot)
+            if type(itemLink) == "string" and string.find(itemLink, "item:") then
+                GetItemInfo(itemLink)
+            end
+        end
+    end
+end
+
+function ToyTools:CheckAndSellAll()
+    if not self.db.profile.autoSellEnable then return end
+    local hasUncached = false
+    self.pendingSellItems = {}
+    for bag = 0, 4 do
+        local numSlots = C_Container.GetContainerNumSlots(bag)
+        for slot = 1, numSlots do
+            local itemLink = C_Container.GetContainerItemLink(bag, slot)
+            if type(itemLink) == "string" and string.find(itemLink, "item:") then
+                local itemName = GetItemInfo(itemLink)
+                if not itemName then
+                    hasUncached = true
+                    local itemID = tonumber(itemLink:match("item:(%d+)") or "0")
+                    if itemID and itemID > 0 then
+                        self.pendingSellItems[itemID] = true
+                    end
+                end
+            end
+        end
+    end
+    if hasUncached then
+        if not self._itemInfoEventRegistered then
+            self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+            self._itemInfoEventRegistered = true
+        end
+        -- 超时保护，5秒后强制执行售卖
+        if self._autoSellTimeoutTimer then
+            self._autoSellTimeoutTimer:Cancel()
+        end
+        self._autoSellTimeoutTimer = C_Timer.NewTimer(5, function()
+            if self._itemInfoEventRegistered then
+                self:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
+                self._itemInfoEventRegistered = false
+            end
+            self:DoFinalAutoSell()
+        end)
+        if self.db.profile.debugMode then
+            print("[ToyTools] 检测到有未缓存物品，等待物品信息到齐后自动售卖（最多等待5秒）...")
+        end
+        return
+    end
+    -- 数据全部缓存，打印提示（无论是否有可售卖物品）
+    print("|cFF00FF00[ToyTools]|r 背包物品信息已全部缓存，准备自动售卖。")
+    if self._itemInfoEventRegistered then
+        self:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
+        self._itemInfoEventRegistered = false
+    end
+    if self._autoSellTimeoutTimer then
+        self._autoSellTimeoutTimer:Cancel()
+        self._autoSellTimeoutTimer = nil
+    end
+    self:DoFinalAutoSell()
+end
+
+function ToyTools:GET_ITEM_INFO_RECEIVED(event, itemID, success)
+    itemID = tonumber(itemID)
+    if self.pendingSellItems and self.pendingSellItems[itemID] then
+        self.pendingSellItems[itemID] = nil
+    end
+    -- 检查是否所有待处理物品都已缓存
+    local stillPending = false
+    for _, v in pairs(self.pendingSellItems) do
+        if v then
+            stillPending = true
+            break
+        end
+    end
+    if not stillPending then
+        if self._itemInfoEventRegistered then
+            self:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
+            self._itemInfoEventRegistered = false
+        end
+        if self._autoSellTimeoutTimer then
+            self._autoSellTimeoutTimer:Cancel()
+            self._autoSellTimeoutTimer = nil
+        end
+        self:DoFinalAutoSell()
+    end
+end
+
+function ToyTools:DoFinalAutoSell()
+    if self.db.profile.debugMode then
+        print("[ToyTools] 所有物品数据已缓存，开始一次性自动售卖...")
+    end
+    local toSell = {}
+    local ilvlMin = tonumber(self.db.profile.autoSellIlvlMin) or 0
+    local ilvlMax = tonumber(self.db.profile.autoSellIlvlMax) or 999
+    local sellLegendary = self.db.profile.autoSellLegendary
+    for bag = 0, 4 do
+        local numSlots = C_Container.GetContainerNumSlots(bag)
+        for slot = 1, numSlots do
+            local itemLink = C_Container.GetContainerItemLink(bag, slot)
+            if type(itemLink) == "string" and string.find(itemLink, "item:") then
+                local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType, _, _, itemIcon, _, classID, subclassID = GetItemInfo(itemLink)
+                local realIlvl = GetDetailedItemLevelInfo(itemLink) or itemLevel or 0
+                -- 灰色物品
+                if itemQuality == 0 then
+                    table.insert(toSell, {bag=bag, slot=slot, name=(itemName or "未知物品"), link=itemLink})
+                -- 装备
+                elseif classID == 2 or classID == 4 then
+                    if realIlvl >= ilvlMin and realIlvl <= ilvlMax then
+                        if itemQuality == 5 then -- 橙装
+                            if sellLegendary then
+                                table.insert(toSell, {bag=bag, slot=slot, name=(itemName or "未知橙装"), link=itemLink})
+                            end
+                        else
+                            table.insert(toSell, {bag=bag, slot=slot, name=(itemName or "未知装备"), link=itemLink})
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if #toSell == 0 then
+        print("[ToyTools] 本次未找到可售卖物品。")
+        return
+    end
+
+    local soldLines = {}
+    local function sellNext(index)
+        if index > #toSell then
+            print("|cFF00FF00[ToyTools]|r 已自动售卖以下物品：")
+            for _, line in ipairs(soldLines) do
+                print(line)
+            end
+            return
+        end
+        local item = toSell[index]
+        C_Container.UseContainerItem(item.bag, item.slot)
+        table.insert(soldLines, string.format("|cFF00FF00[ToyTools]|r %s", item.link or item.name))
+        C_Timer.After(0.15, function() sellNext(index + 1) end)
+    end
+
+    sellNext(1)
+end
+
+function ToyTools:AutoSellRetry()
+    if self._autoSellRetried then return end
+    self._autoSellRetried = true
+    if self.db.profile.debugMode then print("[ToyTools] 自动售卖重试开始...") end
+    local soldItems = {}
+    local ilvlMin = tonumber(self.db.profile.autoSellIlvlMin) or 0
+    local ilvlMax = tonumber(self.db.profile.autoSellIlvlMax) or 999
+    local sellLegendary = self.db.profile.autoSellLegendary
+    for bag = 0, 4 do
+        local numSlots = C_Container.GetContainerNumSlots(bag)
+        for slot = 1, numSlots do
+            local itemLink = C_Container.GetContainerItemLink(bag, slot)
+            if type(itemLink) == "string" and string.find(itemLink, "item:") then
+                local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType, _, _, itemIcon, _, classID, subclassID = GetItemInfo(itemLink)
+                if itemName then
+                    local realIlvl = GetDetailedItemLevelInfo(itemLink) or itemLevel or 0
+                    -- 灰色物品
+                    if itemQuality == 0 then
+                        C_Container.UseContainerItem(bag, slot)
+                        table.insert(soldItems, (itemName or "未知物品"))
+                    -- 装备
+                    elseif classID == 2 or classID == 4 then
+                        if realIlvl >= ilvlMin and realIlvl <= ilvlMax then
+                            if itemQuality == 5 then -- 橙装
+                                if sellLegendary then
+                                    C_Container.UseContainerItem(bag, slot)
+                                    table.insert(soldItems, (itemName or "未知橙装"))
+                                end
+                            else
+                                C_Container.UseContainerItem(bag, slot)
+                                table.insert(soldItems, (itemName or "未知装备"))
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if #soldItems > 0 and (self.db.profile.debugMode or self._diagnoseMode) then
+        print("|cFF00FF00[ToyTools]|r 已自动售卖(重试)：" .. table.concat(soldItems, "，"))
+    elseif self.db.profile.debugMode then
+        print("[ToyTools] 本次未找到可售卖物品(重试)。")
+    end
+    self._autoSellRetried = false
+end 
+
+-- 新增：监听背包打开事件，打印满足自动售卖条件的装备件数
+function ToyTools:BAG_OPEN()
+    local count = 0
+    local ilvlMin = tonumber(self.db.profile.autoSellIlvlMin) or 0
+    local ilvlMax = tonumber(self.db.profile.autoSellIlvlMax) or 999
+    local sellLegendary = self.db.profile.autoSellLegendary
+    for bag = 0, 4 do
+        local numSlots = C_Container.GetContainerNumSlots(bag)
+        for slot = 1, numSlots do
+            local itemLink = C_Container.GetContainerItemLink(bag, slot)
+            if type(itemLink) == "string" and string.find(itemLink, "item:") then
+                local itemName, _, itemQuality, itemLevel, _, _, _, _, _, _, _, classID = GetItemInfo(itemLink)
+                local realIlvl = GetDetailedItemLevelInfo(itemLink) or itemLevel or 0
+                if itemQuality == 0 then
+                    count = count + 1
+                elseif classID == 2 or classID == 4 then
+                    if realIlvl >= ilvlMin and realIlvl <= ilvlMax then
+                        if itemQuality == 5 then
+                            if sellLegendary then
+                                count = count + 1
+                            end
+                        else
+                            count = count + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    print("|cFF00FF00[ToyTools]|r 当前背包中满足自动售卖条件的装备件数：" .. count)
+end 
+
+function ToyTools:PrintAutoSellItemCount()
+    local count = 0
+    local ilvlMin = tonumber(self.db.profile.autoSellIlvlMin) or 0
+    local ilvlMax = tonumber(self.db.profile.autoSellIlvlMax) or 999
+    local sellLegendary = self.db.profile.autoSellLegendary
+    local detailLines = {}
+    for bag = 0, 4 do
+        local numSlots = C_Container.GetContainerNumSlots(bag)
+        for slot = 1, numSlots do
+            local itemLink = C_Container.GetContainerItemLink(bag, slot)
+            if type(itemLink) == "string" and string.find(itemLink, "item:") then
+                local itemName, _, itemQuality, itemLevel, _, _, _, _, _, _, _, classID = GetItemInfo(itemLink)
+                local realIlvl = GetDetailedItemLevelInfo(itemLink) or itemLevel or 0
+                local match = false
+                local reason = ""
+                if itemQuality == 0 then
+                    match = true
+                    reason = "灰色物品"
+                elseif classID == 2 or classID == 4 then
+                    if realIlvl >= ilvlMin and realIlvl <= ilvlMax then
+                        if itemQuality == 5 then
+                            if sellLegendary then
+                                match = true
+                                reason = "橙装"
+                            end
+                        else
+                            match = true
+                            reason = "装备"
+                        end
+                    end
+                end
+                if match then
+                    count = count + 1
+                    table.insert(detailLines, string.format("[%d包%d格] %s (品质:%d 装等:%d) - %s", bag, slot, itemName or "未知", itemQuality or -1, realIlvl or 0, reason))
+                end
+            end
+        end
+    end
+    print("|cFF00FF00[ToyTools]|r 当前背包中满足自动售卖条件的装备件数：" .. count)
+    for _, line in ipairs(detailLines) do
+        print("|cFF00FF00[ToyTools]|r " .. line)
+    end
+end 
