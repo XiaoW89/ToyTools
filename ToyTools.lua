@@ -322,9 +322,16 @@ local function CreateOptions()
         title:SetPoint("TOPLEFT", 16, -16)
         title:SetText("ToyTools 设置")
         
-        -- 自动填充删除确认选项
+        -- 缩进距离（一个TAB约40像素）
+        local indent = 40
+
+        -- 自动删除相关分组标题
+        local autoDeleteTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        autoDeleteTitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -20)
+        autoDeleteTitle:SetText("自动删除相关设置：")
+        -- 自动填充删除确认选项（缩进）
         local autoDeleteCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        autoDeleteCheckbox:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -20)
+        autoDeleteCheckbox:SetPoint("TOPLEFT", autoDeleteTitle, "BOTTOMLEFT", indent, -10)
         autoDeleteCheckbox.Text:SetText("自动填充删除确认")
         autoDeleteCheckbox.tooltipText = "在删除物品时自动填充'DELETE'"
         autoDeleteCheckbox:SetChecked(ToyTools.db.profile.autoDelete)
@@ -334,20 +341,25 @@ local function CreateOptions()
                 ToyTools:EnableAutoDelete()
             end
         end)
-        
-        -- 自动最小化目标追踪栏选项
+
+        -- 自动最小化相关分组标题
+        local minimizeTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        minimizeTitle:SetPoint("TOPLEFT", autoDeleteCheckbox, "BOTTOMLEFT", -indent, -20)
+        minimizeTitle:SetText("自动最小化相关设置：")
+        -- 自动最小化目标追踪栏选项（缩进）
         local minimizeTrackingCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        minimizeTrackingCheckbox:SetPoint("TOPLEFT", autoDeleteCheckbox, "BOTTOMLEFT", 0, -10)
+        minimizeTrackingCheckbox:SetPoint("TOPLEFT", minimizeTitle, "BOTTOMLEFT", indent, -10)
         minimizeTrackingCheckbox.Text:SetText("自动最小化目标追踪栏")
         minimizeTrackingCheckbox.tooltipText = "登录时自动最小化目标追踪栏"
         minimizeTrackingCheckbox:SetChecked(ToyTools.db.profile.minimizeTracking)
         minimizeTrackingCheckbox:SetScript("OnClick", function(self)
             ToyTools.db.profile.minimizeTracking = self:GetChecked()
         end)
-        
-        -- 调试模式选项
+
+        -- 调试模式选项（缩进）
         local debugModeCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
         debugModeCheckbox:SetPoint("TOPLEFT", minimizeTrackingCheckbox, "BOTTOMLEFT", 0, -10)
+        debugModeCheckbox:SetPoint("LEFT", minimizeTrackingCheckbox, "LEFT", 0, 0)
         debugModeCheckbox.Text:SetText("调试模式")
         debugModeCheckbox.tooltipText = "显示详细的操作信息"
         debugModeCheckbox:SetChecked(ToyTools.db.profile.debugMode)
@@ -355,20 +367,37 @@ local function CreateOptions()
             ToyTools.db.profile.debugMode = self:GetChecked()
         end)
 
-        -- 自动售卖功能勾选框
+        -- 自动售卖功能分组标题（无缩进）
+        local autoSellTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        autoSellTitle:SetPoint("TOPLEFT", debugModeCheckbox, "BOTTOMLEFT", -indent, -20)
+        autoSellTitle:SetText("自动售卖相关设置：")
+        -- 自动售卖功能勾选框（缩进）
         local autoSellCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        autoSellCheckbox:SetPoint("TOPLEFT", debugModeCheckbox, "BOTTOMLEFT", 0, -20)
-        autoSellCheckbox.Text:SetText("自动售卖灰色和指定装等装备")
+        autoSellCheckbox:SetPoint("TOPLEFT", autoSellTitle, "BOTTOMLEFT", indent, -10)
+        autoSellCheckbox.Text:SetText("启用自动售卖灰色和指定装等装备")
         autoSellCheckbox.tooltipText = "开启后，打开商人界面自动售卖灰色物品和指定装等范围的装备"
         autoSellCheckbox:SetChecked(ToyTools.db.profile.autoSellEnable)
         autoSellCheckbox:SetScript("OnClick", function(self)
             ToyTools.db.profile.autoSellEnable = self:GetChecked()
         end)
+        -- 橙装自动售卖勾选框（与autoSellCheckbox左对齐，移动到最低装等上方）
+        local legendaryCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+        legendaryCheckbox:SetPoint("TOPLEFT", autoSellCheckbox, "BOTTOMLEFT", 0, -10)
+        legendaryCheckbox.Text:SetText("橙装自动售卖")
+        legendaryCheckbox.tooltipText = "选中后，橙色品质装备也会自动售卖"
+        legendaryCheckbox:SetChecked(ToyTools.db.profile.autoSellLegendary)
+        legendaryCheckbox:SetScript("OnClick", function(self)
+            ToyTools.db.profile.autoSellLegendary = self:GetChecked()
+        end)
 
-        -- 装等范围输入框（最低）
+        -- 装等范围输入框（最低，缩进，与autoSellCheckbox左对齐）
+        local ilvlMinLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        ilvlMinLabel:SetPoint("TOPLEFT", legendaryCheckbox, "BOTTOMLEFT", 0, -10)
+        ilvlMinLabel:SetText("最低装等：")
+
         local ilvlMinEditBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-        ilvlMinEditBox:SetSize(60, 25)
-        ilvlMinEditBox:SetPoint("TOPLEFT", autoSellCheckbox, "BOTTOMLEFT", 0, -10)
+        ilvlMinEditBox:SetSize(90, 25)
+        ilvlMinEditBox:SetPoint("LEFT", ilvlMinLabel, "RIGHT", 5, 0)
         ilvlMinEditBox:SetAutoFocus(false)
         ilvlMinEditBox:SetNumeric(true)
         ilvlMinEditBox:SetNumber(ToyTools.db.profile.autoSellIlvlMin or 0)
@@ -381,14 +410,29 @@ local function CreateOptions()
             local val = tonumber(self:GetText()) or 0
             ToyTools.db.profile.autoSellIlvlMin = val
         end)
-        local ilvlMinLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-        ilvlMinLabel:SetPoint("RIGHT", ilvlMinEditBox, "LEFT", -5, 0)
-        ilvlMinLabel:SetText("最低装等：")
+        ilvlMinEditBox:SetScript("OnShow", function(self)
+            self:SetNumber(ToyTools.db.profile.autoSellIlvlMin or 0)
+            self:ClearFocus()
+            self:SetCursorPosition(0)
+            self:SetCursorPosition(-1)
+        end)
+        C_Timer.After(0, function()
+            if ilvlMinEditBox and ilvlMinEditBox:IsVisible() then
+                ilvlMinEditBox:SetNumber(ToyTools.db.profile.autoSellIlvlMin or 0)
+                ilvlMinEditBox:ClearFocus()
+                ilvlMinEditBox:SetCursorPosition(0)
+                ilvlMinEditBox:SetCursorPosition(-1)
+            end
+        end)
 
-        -- 装等范围输入框（最高）
+        -- 装等范围输入框（最高，紧跟最低装等右侧）
+        local ilvlMaxLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        ilvlMaxLabel:SetPoint("LEFT", ilvlMinEditBox, "RIGHT", 20, 0)
+        ilvlMaxLabel:SetText("最高装等：")
+
         local ilvlMaxEditBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-        ilvlMaxEditBox:SetSize(60, 25)
-        ilvlMaxEditBox:SetPoint("LEFT", ilvlMinEditBox, "RIGHT", 80, 0)
+        ilvlMaxEditBox:SetSize(90, 25)
+        ilvlMaxEditBox:SetPoint("LEFT", ilvlMaxLabel, "RIGHT", 5, 0)
         ilvlMaxEditBox:SetAutoFocus(false)
         ilvlMaxEditBox:SetNumeric(true)
         ilvlMaxEditBox:SetNumber(ToyTools.db.profile.autoSellIlvlMax or 999)
@@ -401,23 +445,24 @@ local function CreateOptions()
             local val = tonumber(self:GetText()) or 999
             ToyTools.db.profile.autoSellIlvlMax = val
         end)
-        local ilvlMaxLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-        ilvlMaxLabel:SetPoint("RIGHT", ilvlMaxEditBox, "LEFT", -5, 0)
-        ilvlMaxLabel:SetText("最高装等：")
-
-        -- 橙装自动售卖勾选框
-        local legendaryCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        legendaryCheckbox:SetPoint("TOPLEFT", ilvlMinEditBox, "BOTTOMLEFT", 0, -10)
-        legendaryCheckbox.Text:SetText("橙装自动售卖")
-        legendaryCheckbox.tooltipText = "选中后，橙色品质装备也会自动售卖"
-        legendaryCheckbox:SetChecked(ToyTools.db.profile.autoSellLegendary)
-        legendaryCheckbox:SetScript("OnClick", function(self)
-            ToyTools.db.profile.autoSellLegendary = self:GetChecked()
+        ilvlMaxEditBox:SetScript("OnShow", function(self)
+            self:SetNumber(ToyTools.db.profile.autoSellIlvlMax or 999)
+            self:ClearFocus()
+            self:SetCursorPosition(0)
+            self:SetCursorPosition(-1)
+        end)
+        C_Timer.After(0, function()
+            if ilvlMaxEditBox and ilvlMaxEditBox:IsVisible() then
+                ilvlMaxEditBox:SetNumber(ToyTools.db.profile.autoSellIlvlMax or 999)
+                ilvlMaxEditBox:ClearFocus()
+                ilvlMaxEditBox:SetCursorPosition(0)
+                ilvlMaxEditBox:SetCursorPosition(-1)
+            end
         end)
         
         -- 运行测试按钮
         local testButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        testButton:SetPoint("TOPLEFT", legendaryCheckbox, "BOTTOMLEFT", 0, -20)
+        testButton:SetPoint("TOPLEFT", ilvlMaxEditBox, "BOTTOMLEFT", 0, -20)
         testButton:SetSize(120, 25)
         testButton:SetText("运行测试")
         testButton:SetScript("OnClick", function()
