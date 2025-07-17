@@ -20,6 +20,7 @@ local defaults = {
         autoSellIlvlMin = 0,
         autoSellIlvlMax = 999,
         autoSellLegendary = false,
+        moveConfirmPopupToCursor = false, -- 新增：移动丢弃确认框到鼠标位置
     }
 }
 
@@ -264,6 +265,7 @@ function ToyTools:OpenConfig()
             print("  自动填充删除确认: " .. (self.db.profile.autoDelete and "开启" or "关闭"))
             print("  自动最小化追踪栏: " .. (self.db.profile.minimizeTracking and "开启" or "关闭"))
             print("  调试模式: " .. (self.db.profile.debugMode and "开启" or "关闭"))
+            print("  移动丢弃确认框到鼠标位置: " .. (self.db.profile.moveConfirmPopupToCursor and "开启" or "关闭"))
         else
             print("  设置未初始化")
         end
@@ -282,6 +284,7 @@ function ToyTools:RunTest()
         print("  自动售卖: " .. (self.db.profile.autoSellEnable and "开启" or "关闭"))
         print("  售卖装等范围: " .. (self.db.profile.autoSellIlvlMin or 0) .. "-" .. (self.db.profile.autoSellIlvlMax or 999))
         print("  橙装自动售卖: " .. (self.db.profile.autoSellLegendary and "是" or "否"))
+        print("  移动丢弃确认框到鼠标位置: " .. (self.db.profile.moveConfirmPopupToCursor and "开启" or "关闭"))
     else
         print("✗ 设置未初始化")
     end
@@ -342,9 +345,19 @@ local function CreateOptions()
             end
         end)
 
+        -- 移动确认框到鼠标位置选项（与自动填充删除确认缩进一致）
+        local moveConfirmPopupCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+        moveConfirmPopupCheckbox:SetPoint("TOPLEFT", autoDeleteCheckbox, "BOTTOMLEFT", 0, -10)
+        moveConfirmPopupCheckbox.Text:SetText("移动丢弃确认框到鼠标位置")
+        moveConfirmPopupCheckbox.tooltipText = "开启后，丢弃物品时确认框会自动移动到鼠标位置，方便点击“是”按钮"
+        moveConfirmPopupCheckbox:SetChecked(ToyTools.db.profile.moveConfirmPopupToCursor)
+        moveConfirmPopupCheckbox:SetScript("OnClick", function(self)
+            ToyTools.db.profile.moveConfirmPopupToCursor = self:GetChecked()
+        end)
+
         -- 自动最小化相关分组标题
         local minimizeTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-        minimizeTitle:SetPoint("TOPLEFT", autoDeleteCheckbox, "BOTTOMLEFT", -indent, -20)
+        minimizeTitle:SetPoint("TOPLEFT", moveConfirmPopupCheckbox, "BOTTOMLEFT", -indent, -20)
         minimizeTitle:SetText("自动最小化相关设置：")
         -- 自动最小化目标追踪栏选项（缩进）
         local minimizeTrackingCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
@@ -477,7 +490,7 @@ local function CreateOptions()
         minimizeButton:SetScript("OnClick", function()
             ToyTools:MinimizeTrackingBar()
         end)
-        
+
         -- 注册到Settings框架
         if Settings.RegisterCanvasLayoutCategory then
             local category = Settings.RegisterCanvasLayoutCategory(panel, "ToyTools")
@@ -813,3 +826,23 @@ function ToyTools:PrintAutoSellItemCount()
         print("|cFF00FF00[ToyTools]|r " .. line)
     end
 end 
+
+-- 新增：移动丢弃确认框到鼠标位置
+local function MoveDeletePopupToCursor(which)
+    if not ToyTools.db.profile.moveConfirmPopupToCursor then return end
+    C_Timer.After(0.1, function()
+        local frame = StaticPopup_FindVisible(which)
+        if frame then
+            local x, y = GetCursorPosition()
+            local scale = UIParent:GetEffectiveScale()
+            frame:ClearAllPoints()
+            frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x/scale, y/scale)
+        end
+    end)
+end
+
+hooksecurefunc("StaticPopup_Show", function(which, ...)
+    if which == "DELETE_ITEM" or which == "DELETE_GOOD_ITEM" then
+        MoveDeletePopupToCursor(which)
+    end
+end) 
