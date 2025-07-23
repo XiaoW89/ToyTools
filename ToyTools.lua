@@ -21,6 +21,7 @@ local defaults = {
         autoSellIlvlMax = 999,
         autoSellLegendary = false,
         moveConfirmPopupToCursor = false, -- 新增：移动丢弃确认框到鼠标位置
+        showInstanceDifficulty = true, -- 新增：显示副本难度
     }
 }
 
@@ -28,6 +29,7 @@ local defaults = {
 function ToyTools:OnInitialize()
     -- 初始化数据库
     self.db = LibStub("AceDB-3.0"):New("ToyToolsDB", defaults)
+    self.pendingDifficultyAnnounce = nil -- 用于暂存需要显示的难度信息
     
     if not self.db then
         print("|cFFFF0000[ToyTools]|r 数据库初始化失败")
@@ -46,6 +48,7 @@ function ToyTools:OnInitialize()
     self:RegisterChatCommand("toytoolsmin", "MinimizeTrackingBar")
     self:RegisterChatCommand("toytoolsdebug", "ToggleDebug")
     self:RegisterChatCommand("tttest", "PrintAutoSellItemCount")
+    self:RegisterChatCommand("ttd", "TestDifficulty") -- 新增：手动测试难度提示
     
     if self.db.profile.debugMode then
         print("|cFF00FF00[ToyTools]|r 聊天命令注册完成")
@@ -57,7 +60,8 @@ function ToyTools:OnInitialize()
     self:RegisterEvent("ADDON_LOADED")
     self:RegisterEvent("MERCHANT_SHOW")
     self:RegisterEvent("BAG_OPEN")
-    -- 在OnInitialize中移除BAG_UPDATE_DELAYED事件注册
+    self:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    self:RegisterEvent("LOADING_SCREEN_DISABLED") -- 监听加载界面消失
     
     if self.db.profile.debugMode then
         print("|cFF00FF00[ToyTools]|r 事件注册完成")
@@ -76,6 +80,24 @@ function ToyTools:OnInitialize()
         print("|cFF00FF00[ToyTools]|r 插件已加载，使用 /toytools 打开设置")
     end
     self:StartPeriodicBagCache()
+    self:CreateInstanceDifficultyAnnouncer()
+end
+
+-- 新增：手动测试难度提示功能
+function ToyTools:TestDifficulty()
+    if not self.db.profile.showInstanceDifficulty then
+        print("|cFFFF0000[ToyTools]|r 副本难度提示功能已禁用。")
+        return
+    end
+    if not self.difficultyFrame then
+        self:CreateInstanceDifficultyAnnouncer()
+    end
+    local testText = "史诗难度 (测试)"
+    print(string.format("|cFF00FF00[ToyTools]|r [调试] 手动触发难度提示: %s", testText))
+    self.difficultyFrame.text:SetText(testText)
+    self.difficultyFrame.animGroup:Stop() -- 先停止之前的动画
+    self.difficultyFrame:SetAlpha(0) -- 重置透明度
+    self.difficultyFrame.animGroup:Play()
 end
 
 -- 启用自动填充删除确认
@@ -213,6 +235,71 @@ function ToyTools:PLAYER_ENTERING_WORLD()
     end
 end
 
+-- 创建副本难度提示UI
+function ToyTools:CreateInstanceDifficultyAnnouncer()
+    if self.difficultyFrame then return end
+
+    local frame = CreateFrame("Frame", "ToyToolsDifficultyFrame", UIParent)
+    frame:SetSize(600, 120)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 250)
+    frame:SetFrameStrata("HIGH")
+    frame:SetAlpha(0)
+    self.difficultyFrame = frame
+
+    local text = frame:CreateFontString(nil, "OVERLAY")
+    text:SetAllPoints(true)
+    text:SetFont("Fonts\\FRIZQT__.TTF", 72, "THICKOUTLINE")
+    text:SetTextColor(1, 0.82, 0, 1)
+    text:SetJustifyH("CENTER")
+    text:SetJustifyV("MIDDLE")
+    frame.text = text
+
+    local animGroup = frame:CreateAnimationGroup()
+    frame.animGroup = animGroup
+
+    local fadeIn = animGroup:CreateAnimation("Alpha")
+    fadeIn:SetFromAlpha(0)
+    fadeIn:SetToAlpha(1)
+    fadeIn:SetDuration(0.3)
+    fadeIn:SetOrder(1)
+
+    local fadeOut = animGroup:CreateAnimation("Alpha")
+    fadeOut:SetFromAlpha(1)
+    fadeOut:SetToAlpha(0)
+    fadeOut:SetStartDelay(4)
+    fadeOut:SetOrder(1)
+    
+    animGroup:SetScript("OnFinished", function()
+        frame:SetAlpha(0)
+    end)
+end
+
+
+-- 区域变化事件处理
+function ToyTools:ZONE_CHANGED_NEW_AREA()
+    if not self.db.profile.showInstanceDifficulty then return end
+
+    local name, instanceType, difficultyID, difficultyName = GetInstanceInfo()
+
+    if (instanceType == "party" or instanceType == "raid") and difficultyName and difficultyName ~= "" then
+        C_Timer.After(1.2, function()
+            if not self.difficultyFrame then
+                self:CreateInstanceDifficultyAnnouncer()
+            end
+            self.difficultyFrame.text:SetText(difficultyName)
+            self.difficultyFrame.animGroup:Stop()
+            self.difficultyFrame:SetAlpha(0)
+            self.difficultyFrame.animGroup:Play()
+        end)
+    end
+end
+
+-- 加载界面消失事件处理
+function ToyTools:LOADING_SCREEN_DISABLED()
+    -- This event is no longer used for the difficulty announcer logic,
+    -- but is kept for potential future use or debugging.
+end
+
 -- 插件加载事件
 function ToyTools:ADDON_LOADED(event, addonName)
     if self.db.profile.debugMode then
@@ -280,6 +367,7 @@ function ToyTools:RunTest()
         print("✓ 设置已初始化")
         print("  自动填充删除确认: " .. (self.db.profile.autoDelete and "开启" or "关闭"))
         print("  自动最小化追踪栏: " .. (self.db.profile.minimizeTracking and "开启" or "关闭"))
+        print("  显示副本难度: " .. (self.db.profile.showInstanceDifficulty and "开启" or "关闭"))
         print("  调试模式: " .. (self.db.profile.debugMode and "开启" or "关闭"))
         print("  自动售卖: " .. (self.db.profile.autoSellEnable and "开启" or "关闭"))
         print("  售卖装等范围: " .. (self.db.profile.autoSellIlvlMin or 0) .. "-" .. (self.db.profile.autoSellIlvlMax or 999))
@@ -355,13 +443,13 @@ local function CreateOptions()
             ToyTools.db.profile.moveConfirmPopupToCursor = self:GetChecked()
         end)
 
-        -- 自动最小化相关分组标题
-        local minimizeTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-        minimizeTitle:SetPoint("TOPLEFT", moveConfirmPopupCheckbox, "BOTTOMLEFT", -indent, -20)
-        minimizeTitle:SetText("自动最小化相关设置：")
+        -- 其他设置分组标题
+        local otherOptionsTitle = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        otherOptionsTitle:SetPoint("TOPLEFT", moveConfirmPopupCheckbox, "BOTTOMLEFT", -indent, -20)
+        otherOptionsTitle:SetText("其他设置：")
         -- 自动最小化目标追踪栏选项（缩进）
         local minimizeTrackingCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        minimizeTrackingCheckbox:SetPoint("TOPLEFT", minimizeTitle, "BOTTOMLEFT", indent, -10)
+        minimizeTrackingCheckbox:SetPoint("TOPLEFT", otherOptionsTitle, "BOTTOMLEFT", indent, -10)
         minimizeTrackingCheckbox.Text:SetText("自动最小化目标追踪栏")
         minimizeTrackingCheckbox.tooltipText = "登录时自动最小化目标追踪栏"
         minimizeTrackingCheckbox:SetChecked(ToyTools.db.profile.minimizeTracking)
@@ -369,10 +457,20 @@ local function CreateOptions()
             ToyTools.db.profile.minimizeTracking = self:GetChecked()
         end)
 
+        -- 新增：显示副本难度选项
+        local showDifficultyCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+        showDifficultyCheckbox:SetPoint("TOPLEFT", minimizeTrackingCheckbox, "BOTTOMLEFT", 0, -10)
+        showDifficultyCheckbox.Text:SetText("显示副本难度提示")
+        showDifficultyCheckbox.tooltipText = "进入副本时在屏幕中央显示当前副本难度"
+        showDifficultyCheckbox:SetChecked(ToyTools.db.profile.showInstanceDifficulty)
+        showDifficultyCheckbox:SetScript("OnClick", function(self)
+            ToyTools.db.profile.showInstanceDifficulty = self:GetChecked()
+        end)
+
         -- 调试模式选项（缩进）
         local debugModeCheckbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        debugModeCheckbox:SetPoint("TOPLEFT", minimizeTrackingCheckbox, "BOTTOMLEFT", 0, -10)
-        debugModeCheckbox:SetPoint("LEFT", minimizeTrackingCheckbox, "LEFT", 0, 0)
+        debugModeCheckbox:SetPoint("TOPLEFT", showDifficultyCheckbox, "BOTTOMLEFT", 0, -10)
+        debugModeCheckbox:SetPoint("LEFT", showDifficultyCheckbox, "LEFT", 0, 0)
         debugModeCheckbox.Text:SetText("调试模式")
         debugModeCheckbox.tooltipText = "显示详细的操作信息"
         debugModeCheckbox:SetChecked(ToyTools.db.profile.debugMode)
@@ -845,4 +943,4 @@ hooksecurefunc("StaticPopup_Show", function(which, ...)
     if which == "DELETE_ITEM" or which == "DELETE_GOOD_ITEM" then
         MoveDeletePopupToCursor(which)
     end
-end) 
+end)

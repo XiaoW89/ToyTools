@@ -1,8 +1,8 @@
 ## Interface: 11107
 ## Title: ToyTools
-## Notes: 玩具工具插件 - 自动填充删除确认、自动最小化目标追踪栏
+## Notes: 玩具工具插件 - 自动填充删除确认、自动最小化目标追踪栏、显示副本难度
 ## Author: Assistant
-## Version: 1.0
+## Version: 1.3
 ## SavedVariables: ToyToolsDB
 
 # Ace3库文件
